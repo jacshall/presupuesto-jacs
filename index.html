@@ -1351,6 +1351,7 @@ function renderPlanear() {
   const dispRealSergio = ingSergio - gastoSergio;
   const dispRealCami   = ingCami   - gastoCami;
   const totalGastos    = gastoSergio + gastoCami;
+  const totalPpto      = pptoSergio + pptoCami;
 
   const indEl = document.getElementById('plan-individual');
   if (!indEl) return;
@@ -1365,6 +1366,7 @@ function renderPlanear() {
 
   function tarjetaPersona(nombre, ing, ppto, gasto, dispPpto, dispReal, color, colorBg) {
     const pctIng   = totalIngresos > 0 ? Math.round((ing/totalIngresos)*100) : 0;
+    const pctPpto  = totalPpto     > 0 ? Math.round((ppto/totalPpto)*100)    : 0;
     const pctGasto = totalGastos   > 0 ? Math.round((gasto/totalGastos)*100) : 0;
     return `<div class="panel">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
@@ -1376,8 +1378,8 @@ function renderPlanear() {
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
         ${metricBox('Ingresos', ing, color, '')}
-        ${metricBox('Gastos presupuestados', ppto, 'var(--text2)', `${pctGasto}% del total gastos`)}
-        ${metricBox('Gastos reales', gasto, 'var(--red)', `${Math.round((gasto/(ing||1))*100)}% de su ingreso`)}
+        ${metricBox('Gastos presupuestados', ppto, 'var(--text2)', `${pctPpto}% del total presupuestado`)}
+        ${metricBox('Gastos reales', gasto, 'var(--red)', `${pctGasto}% del total gastos reales`)}
         ${metricBox('Disp. presupuestado', dispPpto, dispPpto>=0?'var(--green)':'var(--red)', dispPpto>=0?'Según plan':'Sobre el plan')}
       </div>
       <div style="background:${dispReal>=0?'var(--green-bg)':'var(--red-bg)'};border:1px solid ${dispReal>=0?'var(--green-light)':'var(--red-light)'};border-radius:var(--radius-sm);padding:12px 14px;display:flex;justify-content:space-between;align-items:center">
