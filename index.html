@@ -830,9 +830,11 @@ function calcTotals() {
   const fixedReal    = txns.filter(t => t.type === 'expense' && t.catType === 'fixed').reduce((a, t) => a + t.amount, 0);
   const varBudget    = st.cats.filter(c => c.type === 'variable').flatMap(c => c.items).reduce((a, i) => a + i.budget, 0);
   const varReal      = txns.filter(t => t.type === 'expense' && t.catType === 'variable').reduce((a, t) => a + t.amount, 0);
-  const savMeta      = Object.values(st.savingMetas).reduce((a, v) => a + v, 0);
+  const savMeta      = Math.round(Object.values(st.savingMetas).reduce((a, v) => a + v, 0) / 12);
+  const paMetaMes    = st.pagosAnuales.reduce((a, pa) => a + Math.round(pa.monto / 12), 0);
+  const savMetaTotal = savMeta + paMetaMes;
   const savReal      = savs.reduce((a, s) => a + s.amount, 0);
-  return { incomeBudget, incomeReal, fixedBudget, fixedReal, varBudget, varReal, savMeta, savReal,
+  return { incomeBudget, incomeReal, fixedBudget, fixedReal, varBudget, varReal, savMeta: savMetaTotal, savReal,
     balance: incomeReal - fixedReal - varReal - savReal };
 }
 
@@ -1264,7 +1266,7 @@ function renderPlanear() {
     let aHtml = '';
     if (paTotal > 0) aHtml += `<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;color:var(--text2)"><span>Pagos anuales ÷ 12</span><span style="color:var(--amber)">${fmt(paTotal)}</span></div>`;
     if (invMes > 0)  aHtml += `<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;color:var(--text2)"><span>Inversión ÷ 12</span><span style="color:var(--amber)">${fmt(invMes)}</span></div>`;
-    if (viaMes > 0)  aHtml += `<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;color:var(--text2)"><span>Viajes ÷ 12</span><span style="color:var(--amber)">${fmt(viaMes)}</span></div>`;
+    if (viaMes > 0)  aHtml += `<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;color:var(--text2)"><span>Viajes ÷ 12 <span style="color:var(--text3)">(meta anual ${fmt(st.savingMetas['Viajes']||0)})</span></span><span style="color:var(--amber)">${fmt(viaMes)}</span></div>`;
     aList.innerHTML = aHtml || '<div style="font-size:12px;color:var(--text3);padding:4px 0">Sin metas de ahorro configuradas</div>';
   }
 
