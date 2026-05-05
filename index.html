@@ -495,7 +495,17 @@ input[type=number] { -moz-appearance: textfield; }
           <div><label class="lbl">Categoría</label><select id="g-cat"></select></div>
           <div><label class="lbl">Ítem</label><select id="g-item"></select></div>
           <div><label class="lbl">Monto ($)</label><input type="number" id="g-amount" placeholder="0" step="1000" min="0"></div>
-          <div><label class="lbl">Quién</label><select id="g-who"><option>Sergio</option><option>Cami</option></select></div>
+          <div><label class="lbl">Lo paga</label><select id="g-who"><option>Sergio</option><option>Cami</option></select></div>
+        </div>
+        <div class="form-grid fg3" style="margin-bottom:12px">
+          <div><label class="lbl">Responsable del gasto</label>
+            <select id="g-responsable">
+              <option value="Sergio">Sergio</option>
+              <option value="Cami">Cami</option>
+              <option value="Los dos">Los dos (proporcional al ingreso)</option>
+            </select>
+          </div>
+          <div><label class="lbl">Categoría tipo</label><select id="g-cat-display" disabled style="opacity:.5"></select></div>
         </div>
         <button class="btn red" id="btn-add-gasto">+ Registrar gasto</button>
       </div>
@@ -655,6 +665,12 @@ input[type=number] { -moz-appearance: textfield; }
       <div class="panel">
         <div class="panel-title">Distribución del ingreso</div>
         <div id="plan-barras"></div>
+      </div>
+
+      <!-- RESUMEN INDIVIDUAL -->
+      <div style="margin-bottom:8px">
+        <div class="panel-title" style="padding:0;margin-bottom:12px;font-size:11px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Resumen individual</div>
+        <div id="plan-individual"></div>
       </div>
 
     </section>
@@ -953,16 +969,24 @@ function renderGastos() {
   updateItemSel();
   document.getElementById('month-gastos-lbl').textContent = fmtMonth(viewDate);
 
+  // Sync display select
+  const disp = document.getElementById('g-cat-display');
+  if (disp) { disp.innerHTML = gcat.innerHTML; disp.value = gcat.value; }
+
   const gl   = document.getElementById('gasto-list');
   const txns = mTxns().filter(t => t.type === 'expense');
   gl.innerHTML = txns.length ? [...txns].sort((a,b)=>b.ts-a.ts).map(t => {
     const isFixed = t.catType === 'fixed';
+    const resp    = t.responsable || t.who;
+    const respColor = resp === 'Sergio' ? 'var(--blue)' : resp === 'Cami' ? 'var(--purple)' : 'var(--green)';
+    const respBg    = resp === 'Sergio' ? 'var(--blue-bg)' : resp === 'Cami' ? 'var(--purple-bg)' : 'var(--green-bg)';
     return `<div class="txn">
       <div class="txn-left">
         <span class="badge" style="background:${isFixed?'var(--red-bg)':'var(--purple-bg)'};color:${isFixed?'var(--red)':'var(--purple)'}">${isFixed?'Fijo':'Variable'}</span>
         <span style="font-weight:500">${t.cat}</span>
         <span style="color:var(--text2);font-size:12px">${t.item}</span>
-        <span class="txn-meta">${t.who} · ${t.date}</span>
+        <span class="badge" style="background:${respBg};color:${respColor}">Resp: ${resp}</span>
+        <span class="txn-meta">Paga: ${t.who} · ${t.date}</span>
       </div>
       <div class="txn-right">
         <span style="font-weight:500;color:var(--red)">-${fmt(t.amount)}</span>
@@ -1265,10 +1289,10 @@ function renderPlanear() {
   if (!barras || !totalIngresos) { if(barras) barras.innerHTML='<div class="empty">Configura ingresos para ver la distribución</div>'; return; }
 
   const buckets = [
-    { label:'Gastos fijos',       val:fixedBudget,    color:'var(--red)',    pct: Math.round((fixedBudget/totalIngresos)*100)    },
-    { label:'Gastos variables',   val:varBudget,      color:'var(--purple)', pct: Math.round((varBudget/totalIngresos)*100)      },
-    { label:'Ahorros obligat.',   val:totalAhorros,   color:'var(--amber)',  pct: Math.round((totalAhorros/totalIngresos)*100)   },
-    { label:'Disponible',         val:Math.max(0,saldo), color:'var(--green)', pct: Math.max(0,pctDisp) },
+    { label:'Gastos fijos',       val:fixedBudget,       color:'var(--red)',    pct: Math.round((fixedBudget/totalIngresos)*100)    },
+    { label:'Gastos variables',   val:varBudget,         color:'var(--purple)', pct: Math.round((varBudget/totalIngresos)*100)      },
+    { label:'Ahorros obligat.',   val:totalAhorros,      color:'var(--amber)',  pct: Math.round((totalAhorros/totalIngresos)*100)   },
+    { label:'Disponible',         val:Math.max(0,saldo), color:'var(--green)',  pct: Math.max(0,pctDisp) },
   ];
 
   barras.innerHTML = buckets.map(b => `
@@ -1284,6 +1308,68 @@ function renderPlanear() {
         <div class="bar-fill" style="width:${Math.min(100,b.pct)}%;background:${b.color};height:100%"></div>
       </div>
     </div>`).join('');
+
+  // ── Resumen individual ──
+  const ingSergio = st.incomeBudgets.filter(ib=>ib.who==='Sergio').reduce((a,ib)=>a+ib.amount,0);
+  const ingCami   = st.incomeBudgets.filter(ib=>ib.who==='Cami').reduce((a,ib)=>a+ib.amount,0);
+  const pctSergio = totalIngresos > 0 ? ingSergio/totalIngresos : 0.5;
+  const pctCami   = totalIngresos > 0 ? ingCami/totalIngresos   : 0.5;
+
+  const txns = mTxns().filter(t=>t.type==='expense');
+  function gastoPersona(nombre) {
+    return txns.reduce((a,t) => {
+      const resp = t.responsable || t.who;
+      if (resp === nombre) return a + t.amount;
+      if (resp === 'Los dos') return a + t.amount * (nombre==='Sergio'?pctSergio:pctCami);
+      return a;
+    }, 0);
+  }
+
+  const gastoSergio = gastoPersona('Sergio');
+  const gastoCami   = gastoPersona('Cami');
+  const dispSergio  = ingSergio - gastoSergio;
+  const dispCami    = ingCami   - gastoCami;
+  const totalGastos = gastoSergio + gastoCami;
+
+  const indEl = document.getElementById('plan-individual');
+  if (!indEl) return;
+
+  function tarjetaPersona(nombre, ing, gasto, disp, color, colorBg) {
+    const pctIng   = totalIngresos > 0 ? Math.round((ing/totalIngresos)*100) : 0;
+    const pctGasto = totalGastos   > 0 ? Math.round((gasto/totalGastos)*100) : 0;
+    const pctDisp2 = ing > 0 ? Math.max(0,Math.round((disp/ing)*100)) : 0;
+    return `<div class="panel">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+        <div style="width:32px;height:32px;border-radius:50%;background:${colorBg};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:500;color:${color}">${nombre[0]}</div>
+        <div style="font-size:15px;font-weight:500;color:var(--text)">${nombre}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+        <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:10px 12px">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Ingresos</div>
+          <div style="font-family:'DM Serif Display',serif;font-size:18px;color:${color}">${fmt(ing)}</div>
+          <div style="font-size:11px;color:var(--text3)">${pctIng}% del total familiar</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:10px 12px">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Gastos a cargo</div>
+          <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--red)">${fmt(gasto)}</div>
+          <div style="font-size:11px;color:var(--text3)">${pctGasto}% del total gastos</div>
+        </div>
+      </div>
+      <div style="background:${disp>=0?'var(--green-bg)':'var(--red-bg)'};border-radius:var(--radius-sm);padding:12px 14px;display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-size:11px;color:var(--text2);margin-bottom:2px">${disp>=0?'Le queda disponible':'Le falta'}</div>
+          <div style="font-size:10px;color:var(--text3)">${pctDisp2}% de su ingreso</div>
+        </div>
+        <div style="font-family:'DM Serif Display',serif;font-size:22px;color:${disp>=0?'var(--green)':'var(--red)'}">${fmt(Math.abs(disp))}</div>
+      </div>
+    </div>`;
+  }
+
+  indEl.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      ${tarjetaPersona('Sergio', ingSergio, gastoSergio, dispSergio, 'var(--blue)', 'var(--blue-bg)')}
+      ${tarjetaPersona('Cami', ingCami, gastoCami, dispCami, 'var(--purple)', 'var(--purple-bg)')}
+    </div>`;
 }
 
 // ─── RENDER COMPARAR ─────────────────────────────────────────
@@ -1417,12 +1503,15 @@ document.getElementById('btn-add-income').onclick = async () => {
 document.getElementById('btn-add-gasto').onclick = async () => {
   const amount  = parseFloat(document.getElementById('g-amount').value);
   if (!amount || amount <= 0) return;
-  const catName = document.getElementById('g-cat').value;
-  const cat     = st.cats.find(c => c.name === catName);
+  const catName    = document.getElementById('g-cat').value;
+  const cat        = st.cats.find(c => c.name === catName);
+  const responsable = document.getElementById('g-responsable').value;
   await addTxn({ type: 'expense', amount, cat: catName,
     catType: cat ? cat.type : 'variable',
     item: document.getElementById('g-item').value,
-    who: document.getElementById('g-who').value, month: mk(), date: today() });
+    who: document.getElementById('g-who').value,
+    responsable,
+    month: mk(), date: today() });
   document.getElementById('g-amount').value = '';
 };
 
