@@ -1166,8 +1166,13 @@ function renderConfig() {
       ${cat.items.map((it, ii) => `
         <div class="config-item-row">
           <input type="text" value="${it.name}" data-ci="${ci}" data-ii="${ii}" class="item-rename" style="flex:1;font-size:12px;border:none;background:transparent;color:var(--text);padding:0;outline:none">
-          <span style="font-size:11px;color:var(--text3);margin-right:6px">Límite:</span>
-          <input type="number" value="${it.budget||''}" placeholder="sin límite" data-ci="${ci}" data-ii="${ii}" class="item-budget-inp" style="width:120px;font-size:12px" step="1000" min="0">
+          <span style="font-size:11px;color:var(--text3);margin-right:4px">Límite:</span>
+          <input type="number" value="${it.budget||''}" placeholder="0" data-ci="${ci}" data-ii="${ii}" class="item-budget-inp" style="width:100px;font-size:12px" step="1000" min="0">
+          <select data-ci="${ci}" data-ii="${ii}" class="item-resp-sel" style="font-size:11px;height:28px;padding:0 4px;width:90px">
+            <option value="Sergio" ${(it.responsable||'Sergio')==='Sergio'?'selected':''}>Sergio</option>
+            <option value="Cami"   ${(it.responsable||'')==='Cami'?'selected':''}>Cami</option>
+            <option value="Los dos" ${(it.responsable||'')==='Los dos'?'selected':''}>Los dos</option>
+          </select>
           <button class="btn-del" data-delitem="${ci}-${ii}">✕</button>
         </div>`).join('')}
       <div class="add-inline">
@@ -1181,6 +1186,7 @@ function renderConfig() {
   el.querySelectorAll('.cat-rename').forEach(inp => inp.onblur = async () => { st.cats[inp.dataset.ci].name = inp.value; await saveConfig(); });
   el.querySelectorAll('.item-rename').forEach(inp => inp.onblur = async () => { st.cats[inp.dataset.ci].items[inp.dataset.ii].name = inp.value; await saveConfig(); });
   el.querySelectorAll('.item-budget-inp').forEach(inp => inp.onblur = async () => { st.cats[inp.dataset.ci].items[inp.dataset.ii].budget = parseFloat(inp.value) || 0; await saveConfig(); });
+  el.querySelectorAll('.item-resp-sel').forEach(sel => sel.onchange = async () => { st.cats[sel.dataset.ci].items[sel.dataset.ii].responsable = sel.value; await saveConfig(); });
   el.querySelectorAll('[data-delcat]').forEach(b => b.onclick = async () => {
     if (confirm('¿Eliminar categoría?')) { st.cats.splice(parseInt(b.dataset.delcat), 1); await saveConfig(); render(); }
   });
@@ -1315,6 +1321,17 @@ function renderPlanear() {
   const pctSergio = totalIngresos > 0 ? ingSergio/totalIngresos : 0.5;
   const pctCami   = totalIngresos > 0 ? ingCami/totalIngresos   : 0.5;
 
+  // Presupuestado por persona (desde config de ítems)
+  function presupPersona(nombre) {
+    return st.cats.flatMap(c=>c.items).reduce((a,it) => {
+      const resp = it.responsable || 'Sergio';
+      if (resp === nombre) return a + (it.budget||0);
+      if (resp === 'Los dos') return a; // Los dos no se divide en presupuesto
+      return a;
+    }, 0);
+  }
+
+  // Gastado real por persona
   const txns = mTxns().filter(t=>t.type==='expense');
   function gastoPersona(nombre) {
     return txns.reduce((a,t) => {
@@ -1325,51 +1342,60 @@ function renderPlanear() {
     }, 0);
   }
 
+  const pptoSergio  = presupPersona('Sergio');
+  const pptoCami    = presupPersona('Cami');
   const gastoSergio = gastoPersona('Sergio');
   const gastoCami   = gastoPersona('Cami');
-  const dispSergio  = ingSergio - gastoSergio;
-  const dispCami    = ingCami   - gastoCami;
-  const totalGastos = gastoSergio + gastoCami;
+  const dispPptoSergio = ingSergio - pptoSergio;
+  const dispPptoCami   = ingCami   - pptoCami;
+  const dispRealSergio = ingSergio - gastoSergio;
+  const dispRealCami   = ingCami   - gastoCami;
+  const totalGastos    = gastoSergio + gastoCami;
 
   const indEl = document.getElementById('plan-individual');
   if (!indEl) return;
 
-  function tarjetaPersona(nombre, ing, gasto, disp, color, colorBg) {
+  function metricBox(label, valor, color, sub) {
+    return `<div style="background:var(--surface2);border-radius:var(--radius-sm);padding:10px 12px">
+      <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">${label}</div>
+      <div style="font-family:'DM Serif Display',serif;font-size:17px;color:${color}">${fmt(valor)}</div>
+      ${sub ? `<div style="font-size:11px;color:var(--text3)">${sub}</div>` : ''}
+    </div>`;
+  }
+
+  function tarjetaPersona(nombre, ing, ppto, gasto, dispPpto, dispReal, color, colorBg) {
     const pctIng   = totalIngresos > 0 ? Math.round((ing/totalIngresos)*100) : 0;
     const pctGasto = totalGastos   > 0 ? Math.round((gasto/totalGastos)*100) : 0;
-    const pctDisp2 = ing > 0 ? Math.max(0,Math.round((disp/ing)*100)) : 0;
     return `<div class="panel">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
         <div style="width:32px;height:32px;border-radius:50%;background:${colorBg};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:500;color:${color}">${nombre[0]}</div>
-        <div style="font-size:15px;font-weight:500;color:var(--text)">${nombre}</div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-        <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:10px 12px">
-          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Ingresos</div>
-          <div style="font-family:'DM Serif Display',serif;font-size:18px;color:${color}">${fmt(ing)}</div>
-          <div style="font-size:11px;color:var(--text3)">${pctIng}% del total familiar</div>
-        </div>
-        <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:10px 12px">
-          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Gastos a cargo</div>
-          <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--red)">${fmt(gasto)}</div>
-          <div style="font-size:11px;color:var(--text3)">${pctGasto}% del total gastos</div>
-        </div>
-      </div>
-      <div style="background:${disp>=0?'var(--green-bg)':'var(--red-bg)'};border-radius:var(--radius-sm);padding:12px 14px;display:flex;justify-content:space-between;align-items:center">
         <div>
-          <div style="font-size:11px;color:var(--text2);margin-bottom:2px">${disp>=0?'Le queda disponible':'Le falta'}</div>
-          <div style="font-size:10px;color:var(--text3)">${pctDisp2}% de su ingreso</div>
+          <div style="font-size:15px;font-weight:500;color:var(--text)">${nombre}</div>
+          <div style="font-size:11px;color:var(--text3)">${pctIng}% del ingreso familiar</div>
         </div>
-        <div style="font-family:'DM Serif Display',serif;font-size:22px;color:${disp>=0?'var(--green)':'var(--red)'}">${fmt(Math.abs(disp))}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+        ${metricBox('Ingresos', ing, color, '')}
+        ${metricBox('Gastos presupuestados', ppto, 'var(--text2)', `${pctGasto}% del total gastos`)}
+        ${metricBox('Gastos reales', gasto, 'var(--red)', `${Math.round((gasto/(ing||1))*100)}% de su ingreso`)}
+        ${metricBox('Disp. presupuestado', dispPpto, dispPpto>=0?'var(--green)':'var(--red)', dispPpto>=0?'Según plan':'Sobre el plan')}
+      </div>
+      <div style="background:${dispReal>=0?'var(--green-bg)':'var(--red-bg)'};border:1px solid ${dispReal>=0?'var(--green-light)':'var(--red-light)'};border-radius:var(--radius-sm);padding:12px 14px;display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-size:12px;font-weight:500;color:${dispReal>=0?'var(--green)':'var(--red)'}">${dispReal>=0?'Le queda disponible real':'Le falta (real)'}</div>
+          <div style="font-size:11px;color:var(--text3)">${Math.max(0,Math.round((dispReal/(ing||1))*100))}% de su ingreso</div>
+        </div>
+        <div style="font-family:'DM Serif Display',serif;font-size:24px;color:${dispReal>=0?'var(--green)':'var(--red)'}">${fmt(Math.abs(dispReal))}</div>
       </div>
     </div>`;
   }
 
   indEl.innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-      ${tarjetaPersona('Sergio', ingSergio, gastoSergio, dispSergio, 'var(--blue)', 'var(--blue-bg)')}
-      ${tarjetaPersona('Cami', ingCami, gastoCami, dispCami, 'var(--purple)', 'var(--purple-bg)')}
+      ${tarjetaPersona('Sergio', ingSergio, pptoSergio, gastoSergio, dispPptoSergio, dispRealSergio, 'var(--blue)', 'var(--blue-bg)')}
+      ${tarjetaPersona('Cami',   ingCami,   pptoCami,   gastoCami,   dispPptoCami,   dispRealCami,   'var(--purple)', 'var(--purple-bg)')}
     </div>`;
+}
 }
 
 // ─── RENDER COMPARAR ─────────────────────────────────────────
