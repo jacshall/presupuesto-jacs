@@ -519,23 +519,41 @@ input[type=number] { -moz-appearance: textfield; }
       <!-- ALERTAS DE PAGOS PRÓXIMOS -->
       <div id="alertas-pagos"></div>
 
-      <!-- REGISTRAR AHORRO -->
+      <!-- REGISTRAR MOVIMIENTO -->
       <div class="panel">
-        <div class="panel-title">Registrar ahorro</div>
+        <div class="panel-title">Registrar movimiento en obligaciones anuales</div>
+        <div class="form-grid fg4" style="margin-bottom:8px">
+          <div><label class="lbl">Tipo</label>
+            <select id="sav-tipo">
+              <option value="abono">Abono / ahorro</option>
+              <option value="pago">Pago ejecutado</option>
+            </select>
+          </div>
+          <div><label class="lbl">Obligación</label><select id="sav-pa-select"></select></div>
+          <div><label class="lbl">Descripción</label><input type="text" id="sav-desc" placeholder="Ej: Pago SOAT mayo..."></div>
+          <div><label class="lbl">Monto ($)</label><input type="number" id="sav-amount" placeholder="0" step="10000" min="0"></div>
+        </div>
+        <div class="form-grid fg3" style="margin-bottom:12px">
+          <div><label class="lbl">Quién</label><select id="sav-who"><option>Sergio</option><option>Cami</option></select></div>
+        </div>
+        <button class="btn amber" id="btn-add-sav-pa">+ Registrar</button>
+      </div>
+
+      <!-- REGISTRAR AHORRO INVERSIÓN / VIAJES -->
+      <div class="panel">
+        <div class="panel-title">Registrar ahorro — Inversión y Viajes</div>
         <div class="form-grid fg4">
           <div><label class="lbl">Bolsillo</label>
             <select id="sav-bolsillo">
-              <option value="__pagos__">Pagos Anuales</option>
               <option value="Inversión">Inversión</option>
               <option value="Viajes">Viajes</option>
             </select>
           </div>
-          <div id="sav-pa-wrap" style="display:none"><label class="lbl">Obligación</label><select id="sav-pa-select"></select></div>
-          <div><label class="lbl">Descripción</label><input type="text" id="sav-desc" placeholder="Ej: Abono SOAT..."></div>
-          <div><label class="lbl">Monto ($)</label><input type="number" id="sav-amount" placeholder="0" step="10000" min="0"></div>
-          <div><label class="lbl">Quién</label><select id="sav-who"><option>Sergio</option><option>Cami</option></select></div>
+          <div><label class="lbl">Descripción</label><input type="text" id="sav-desc2" placeholder="Ej: Ahorro viaje..."></div>
+          <div><label class="lbl">Monto ($)</label><input type="number" id="sav-amount2" placeholder="0" step="10000" min="0"></div>
+          <div><label class="lbl">Quién</label><select id="sav-who2"><option>Sergio</option><option>Cami</option></select></div>
         </div>
-        <button class="btn amber" id="btn-add-sav">+ Guardar ahorro</button>
+        <button class="btn blue" id="btn-add-sav">+ Guardar ahorro</button>
       </div>
 
       <!-- BOLSILLOS -->
@@ -1088,14 +1106,9 @@ function renderAlertas() {
 // ─── RENDER AHORROS ───────────────────────────────────────────
 function renderAhorros() {
   renderAlertas();
-  // Selector de obligación cuando bolsillo = Pagos Anuales
-  const bolSel = document.getElementById('sav-bolsillo');
-  const paWrap = document.getElementById('sav-pa-wrap');
+
   const paSelect = document.getElementById('sav-pa-select');
   if (paSelect) paSelect.innerHTML = st.pagosAnuales.map(pa => `<option value="${pa.id}">${pa.nombre}</option>`).join('') || '<option>Sin obligaciones</option>';
-  if (bolSel && paWrap) {
-    bolSel.onchange = () => { paWrap.style.display = bolSel.value === '__pagos__' ? '' : 'none'; };
-  }
 
   const el = document.getElementById('bolsillos-view');
   if (!el) return;
@@ -1104,42 +1117,77 @@ function renderAhorros() {
   // ── PAGOS ANUALES ──
   const paPanel = document.createElement('div');
   paPanel.className = 'panel';
-  let paHtml = `<div class="panel-title">Pagos Anuales — progreso por obligación</div>`;
+  let paHtml = `<div class="panel-title">Obligaciones anuales — abonos y pagos ejecutados</div>`;
+
   if (!st.pagosAnuales.length) {
     paHtml += '<div class="empty">Define obligaciones anuales en Configurar</div>';
   } else {
+    const curYear = new Date().getFullYear();
     st.pagosAnuales.forEach(pa => {
-      const abonos = st.savings.filter(s => s.bolsillo === '__pagos__' && s.paId === pa.id);
-      const total  = abonos.reduce((a,s) => a + s.amount, 0);
-      const p      = pct(total, pa.monto);
-      const over   = total >= pa.monto;
-      const cuota  = Math.round(pa.monto / pa.cuotas);
-      paHtml += `<div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--border)">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
-          <div>
-            <span style="font-size:13px;font-weight:500;color:var(--text)">${pa.nombre}</span>
-            <span style="font-size:11px;color:var(--text3);margin-left:8px">Meses: ${pa.meses.map(m=>MESES_CORTOS[m-1]).join(', ')}</span>
-          </div>
-          <span style="font-size:13px;color:${over?'var(--green)':'var(--text2)'};">${fmt(total)} / ${fmt(pa.monto)}</span>
+      const allMovs     = st.savings.filter(s => s.paId === pa.id && s.month && s.month.startsWith(curYear + '-'));
+      const abonos      = allMovs.filter(s => s.tipo !== 'pago');
+      const pagos       = allMovs.filter(s => s.tipo === 'pago');
+      const totalAbonos = abonos.reduce((a,s)=>a+s.amount,0);
+      const totalPagos  = pagos.reduce((a,s)=>a+s.amount,0);
+      const disponible  = totalAbonos - totalPagos;
+      const pPagado     = pct(totalPagos, pa.monto);
+      const pAbonado    = pct(totalAbonos, pa.monto);
+      paHtml += `<div style="margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
+          <span style="font-size:14px;font-weight:500;color:var(--text)">${pa.nombre}</span>
+          <span style="font-size:11px;color:var(--text3)">Meta: ${fmt(pa.monto)} · Meses: ${pa.meses.map(m=>MESES_CORTOS[m-1]).join(', ')}</span>
         </div>
-        <div class="bar-track" style="margin:0 0 6px"><div class="bar-fill" style="width:${p}%;background:${over?'var(--green)':'var(--amber)'}"></div></div>
-        <div style="font-size:11px;color:var(--text3)">${pa.cuotas} cuota${pa.cuotas>1?'s':''} de ${fmt(cuota)} · ${over?'✓ Meta cumplida':`Faltan ${fmt(pa.monto-total)}`}</div>
-        ${abonos.length ? [...abonos].sort((a,b)=>b.ts-a.ts).slice(0,4).map(s=>`
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+          <div style="background:var(--green-bg);border-radius:var(--radius-sm);padding:8px 12px">
+            <div style="font-size:10px;color:var(--green);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Abonado</div>
+            <div style="font-size:16px;font-weight:500;color:var(--green)">${fmt(totalAbonos)}</div>
+          </div>
+          <div style="background:var(--red-bg);border-radius:var(--radius-sm);padding:8px 12px">
+            <div style="font-size:10px;color:var(--red);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Pagado</div>
+            <div style="font-size:16px;font-weight:500;color:var(--red)">${fmt(totalPagos)}</div>
+          </div>
+          <div style="background:${disponible>=0?'var(--amber-bg)':'var(--red-bg)'};border-radius:var(--radius-sm);padding:8px 12px">
+            <div style="font-size:10px;color:${disponible>=0?'var(--amber)':'var(--red)'};text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Disponible</div>
+            <div style="font-size:16px;font-weight:500;color:${disponible>=0?'var(--amber)':'var(--red)'}">${fmt(disponible)}</div>
+          </div>
+        </div>
+        <div style="margin-bottom:6px">
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:2px"><span>Pagado vs meta</span><span>${pPagado}%</span></div>
+          <div class="bar-track" style="margin:0"><div class="bar-fill" style="width:${pPagado}%;background:var(--red)"></div></div>
+        </div>
+        <div style="margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:2px"><span>Abonado vs meta</span><span>${pAbonado}%</span></div>
+          <div class="bar-track" style="margin:0"><div class="bar-fill" style="width:${pAbonado}%;background:var(--green)"></div></div>
+        </div>
+        ${allMovs.length ? '<div>' + [...allMovs].sort((a,b)=>b.ts-a.ts).slice(0,6).map(s=>`
           <div class="txn" style="padding:5px 0">
-            <div class="txn-left"><span class="badge" style="background:var(--amber-bg);color:var(--amber)">${s.who}</span><span>${s.desc}</span><span class="txn-meta">${s.month}</span></div>
-            <div class="txn-right"><span style="font-weight:500;color:var(--amber)">+${fmt(s.amount)}</span><button class="btn-del" data-del-sav="${s._id}">✕</button></div>
-          </div>`).join('') : ''}
+            <div class="txn-left">
+              <span class="badge" style="background:${s.tipo==='pago'?'var(--red-bg)':'var(--green-bg)'};color:${s.tipo==='pago'?'var(--red)':'var(--green)'}">
+                ${s.tipo==='pago'?'Pago':'Abono'}
+              </span>
+              <span>${s.desc}</span>
+              <span class="txn-meta">${s.who} · ${s.month}</span>
+            </div>
+            <div class="txn-right">
+              <span style="font-weight:500;color:${s.tipo==='pago'?'var(--red)':'var(--green)'}">
+                ${s.tipo==='pago'?'-':'+'}${fmt(s.amount)}
+              </span>
+              <button class="btn-del" data-del-sav="${s._id}">x</button>
+            </div>
+          </div>`).join('') + '</div>' : ''}
       </div>`;
     });
   }
   paPanel.innerHTML = paHtml;
   el.appendChild(paPanel);
+  paPanel.querySelectorAll('[data-del-sav]').forEach(b => b.onclick = () => deleteSaving(b.dataset.delSav));
 
   // ── INVERSIÓN Y VIAJES ──
   ['Inversión','Viajes'].forEach(bol => {
     const cfg     = BOLSILLO_CONFIG[bol];
+    const saldo   = st.saldosIniciales?.[bol] || 0;
     const entries = st.savings.filter(s => s.bolsillo === bol);
-    const total   = entries.reduce((a,s) => a + s.amount, 0);
+    const total   = entries.reduce((a,s)=>a+s.amount,0) + saldo;
     const meta    = st.savingMetas[bol] || 0;
     const p       = pct(total, meta);
     let html = `<div class="bolsillo">
@@ -1147,24 +1195,23 @@ function renderAhorros() {
         <span class="bolsillo-name" style="color:${cfg.color}">${bol}</span>
         <div style="text-align:right">
           <div class="bolsillo-total" style="color:${cfg.color}">${fmt(total)}</div>
-          ${meta > 0 ? `<div style="font-size:11px;color:var(--text3)">meta ${fmt(meta)} / año</div>` : ''}
+          ${meta>0?`<div style="font-size:11px;color:var(--text3)">meta ${fmt(meta)} / año · ${p}%</div>`:''}
+          ${saldo>0?`<div style="font-size:11px;color:var(--text3)">incl. saldo inicial ${fmt(saldo)}</div>`:''}
         </div>
       </div>
-      ${meta > 0 ? `<div class="bar-track" style="background:var(--surface)"><div class="bar-fill" style="width:${p}%;background:${cfg.color}"></div></div>` : ''}
+      ${meta>0?`<div class="bar-track" style="background:var(--surface)"><div class="bar-fill" style="width:${p}%;background:${cfg.color}"></div></div>`:''}
       <div>`;
-    [...entries].sort((a,b)=>b.ts-a.ts).slice(0,6).forEach(s => {
-      html += `<div class="txn">
+    [...entries].sort((a,b)=>b.ts-a.ts).slice(0,6).forEach(s=>{
+      html+=`<div class="txn">
         <div class="txn-left"><span class="badge" style="background:${cfg.bg};color:${cfg.color}">${s.who}</span><span>${s.desc}</span><span class="txn-meta">${s.month}</span></div>
-        <div class="txn-right"><span style="font-weight:500;color:${cfg.color}">+${fmt(s.amount)}</span><button class="btn-del" data-del-sav="${s._id}">✕</button></div>
+        <div class="txn-right"><span style="font-weight:500;color:${cfg.color}">+${fmt(s.amount)}</span><button class="btn-del" data-del-sav="${s._id}">x</button></div>
       </div>`;
     });
-    if (!entries.length) html += '<div class="empty">Sin aportes aún</div>';
-    html += `</div></div>`;
-    el.innerHTML += html;
+    if(!entries.length) html+='<div class="empty">Sin aportes aun</div>';
+    html+=`</div></div>`;
+    el.innerHTML+=html;
   });
-
-  el.querySelectorAll('[data-del-sav]').forEach(b => b.onclick = () => deleteSaving(b.dataset.delSav));
-  paPanel.querySelectorAll('[data-del-sav]').forEach(b => b.onclick = () => deleteSaving(b.dataset.delSav));
+  el.querySelectorAll('[data-del-sav]').forEach(b=>b.onclick=()=>deleteSaving(b.dataset.delSav));
 }
 
 // ─── RENDER CONFIG ────────────────────────────────────────────
@@ -1594,25 +1641,35 @@ document.getElementById('btn-add-gasto').onclick = async () => {
   document.getElementById('g-amount').value = '';
 };
 
-document.getElementById('btn-add-sav').onclick = async () => {
-  const amount   = parseFloat(document.getElementById('sav-amount').value);
+document.getElementById('btn-add-sav-pa').onclick = async () => {
+  const amount = parseFloat(document.getElementById('sav-amount').value);
   if (!amount || amount <= 0) return;
-  const bolsillo = document.getElementById('sav-bolsillo').value;
-  const data = {
-    amount, bolsillo,
-    desc: document.getElementById('sav-desc').value.trim() || 'Ahorro',
-    who:  document.getElementById('sav-who').value,
+  const paId  = document.getElementById('sav-pa-select').value;
+  const tipo  = document.getElementById('sav-tipo').value;
+  const pa    = st.pagosAnuales.find(p => p.id === paId);
+  await addSaving({
+    amount, paId, tipo,
+    bolsillo: '__pagos__',
+    desc: document.getElementById('sav-desc').value.trim() || (pa ? pa.nombre : 'Obligación'),
+    who: document.getElementById('sav-who').value,
     month: mk(), date: today()
-  };
-  if (bolsillo === '__pagos__') {
-    const paId = document.getElementById('sav-pa-select').value;
-    const pa   = st.pagosAnuales.find(p => p.id === paId);
-    data.paId  = paId;
-    data.desc  = data.desc || (pa ? pa.nombre : 'Pago anual');
-  }
-  await addSaving(data);
+  });
   document.getElementById('sav-amount').value = '';
   document.getElementById('sav-desc').value   = '';
+};
+
+document.getElementById('btn-add-sav').onclick = async () => {
+  const amount = parseFloat(document.getElementById('sav-amount2').value);
+  if (!amount || amount <= 0) return;
+  await addSaving({
+    amount,
+    bolsillo: document.getElementById('sav-bolsillo').value,
+    desc: document.getElementById('sav-desc2').value.trim() || 'Ahorro',
+    who: document.getElementById('sav-who2').value,
+    month: mk(), date: today()
+  });
+  document.getElementById('sav-amount2').value = '';
+  document.getElementById('sav-desc2').value   = '';
 };
 
 document.getElementById('btn-save-metas').onclick = async () => {
