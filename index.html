@@ -419,7 +419,7 @@ input[type=number] { -moz-appearance: textfield; }
 
     <!-- RESUMEN -->
     <section class="sec active" id="sec-resumen">
-      <div class="cards-row">
+      <div class="cards-row" style="grid-template-columns:repeat(3,1fr)">
         <div class="card">
           <div class="card-label">Ingresos</div>
           <div class="card-val" style="color:var(--green)" id="c-income">$0</div>
@@ -438,20 +438,19 @@ input[type=number] { -moz-appearance: textfield; }
           <div class="card-sub" id="c-var-sub">ppto $0</div>
           <div class="card-bar"><div class="card-bar-fill" style="background:var(--purple)" id="cb-var"></div></div>
         </div>
-        <div class="card">
-          <div class="card-label">Ahorros mes</div>
-          <div class="card-val" style="color:var(--amber)" id="c-sav">$0</div>
-          <div class="card-sub" id="c-sav-sub">meta $0</div>
-          <div class="card-bar"><div class="card-bar-fill" style="background:var(--amber)" id="cb-sav"></div></div>
-        </div>
       </div>
       <div class="balance-bar">
         <div>
           <div class="balance-label">Disponible este mes</div>
-          <div class="balance-sub">Ingresos − gastos fijos − variables − ahorros</div>
+          <div class="balance-sub">Ingresos − gastos fijos − gastos variables</div>
         </div>
         <div class="balance-val" id="c-balance">$0</div>
       </div>
+
+      <!-- TARJETAS ANUALES DE AHORRO -->
+      <div style="font-size:11px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px">Progreso de ahorros — año en curso</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px" id="savings-annual-cards"></div>
+
       <div class="panel" id="resumen-detail">
         <div class="panel-title">Detalle por categoría</div>
       </div>
@@ -581,9 +580,25 @@ input[type=number] { -moz-appearance: textfield; }
       <!-- METAS INVERSIÓN Y VIAJES -->
       <div class="panel">
         <div class="panel-title">Metas anuales — Inversión y Viajes</div>
-        <div class="form-grid fg2">
-          <div><label class="lbl">Meta anual Inversión ($)</label><input type="number" id="meta-inv" placeholder="0" step="100000" min="0"></div>
-          <div><label class="lbl">Meta anual Viajes ($)</label><input type="number" id="meta-viajes" placeholder="0" step="100000" min="0"></div>
+        <div class="form-grid fg2" style="margin-bottom:16px">
+          <div>
+            <label class="lbl">Meta anual Inversión ($)</label>
+            <input type="number" id="meta-inv" placeholder="0" step="100000" min="0">
+          </div>
+          <div>
+            <label class="lbl">Saldo actual Inversión ($)</label>
+            <input type="number" id="saldo-inv" placeholder="0" step="100000" min="0">
+          </div>
+        </div>
+        <div class="form-grid fg2" style="margin-bottom:16px">
+          <div>
+            <label class="lbl">Meta anual Viajes ($)</label>
+            <input type="number" id="meta-viajes" placeholder="0" step="100000" min="0">
+          </div>
+          <div>
+            <label class="lbl">Saldo actual Viajes ($)</label>
+            <input type="number" id="saldo-viajes" placeholder="0" step="100000" min="0">
+          </div>
         </div>
         <button class="btn amber" id="btn-save-metas">Guardar metas</button>
       </div>
@@ -751,6 +766,7 @@ let st = {
     { id: '2', name: 'Salario Cami',   who: 'Cami',   tipo: 'fijo', amount: 0 },
   ],
   savingMetas: { 'Inversión': 0, 'Viajes': 0 },
+  saldosIniciales: { 'Inversión': 0, 'Viajes': 0 },
   pagosAnuales: [], // [{id, nombre, monto, cuotas, meses:[1..12]}]
   txns: [],
   savings: []
@@ -774,10 +790,11 @@ async function loadConfig() {
   const snap = await getDoc(doc(db, 'config', 'main'));
   if (snap.exists()) {
     const d = snap.data();
-    if (d.cats)          st.cats          = d.cats;
-    if (d.incomeBudgets) st.incomeBudgets = d.incomeBudgets;
-    if (d.savingMetas)   st.savingMetas   = d.savingMetas;
-    if (d.pagosAnuales)  st.pagosAnuales  = d.pagosAnuales;
+    if (d.cats)            st.cats            = d.cats;
+    if (d.incomeBudgets)   st.incomeBudgets   = d.incomeBudgets;
+    if (d.savingMetas)     st.savingMetas     = d.savingMetas;
+    if (d.saldosIniciales) st.saldosIniciales = d.saldosIniciales;
+    if (d.pagosAnuales)    st.pagosAnuales    = d.pagosAnuales;
   }
 }
 
@@ -786,6 +803,7 @@ async function saveConfig() {
     cats: st.cats,
     incomeBudgets: st.incomeBudgets,
     savingMetas: st.savingMetas,
+    saldosIniciales: st.saldosIniciales,
     pagosAnuales: st.pagosAnuales
   });
 }
@@ -835,7 +853,7 @@ function calcTotals() {
   const savMetaTotal = savMeta + paMetaMes;
   const savReal      = savs.reduce((a, s) => a + s.amount, 0);
   return { incomeBudget, incomeReal, fixedBudget, fixedReal, varBudget, varReal, savMeta: savMetaTotal, savReal,
-    balance: incomeReal - fixedReal - varReal - savReal };
+    balance: incomeReal - fixedReal - varReal };
 }
 
 function calcTotalsForMonth(monthKey) {
@@ -862,12 +880,42 @@ function renderResumen() {
   document.getElementById('c-var').textContent        = fmt(T.varReal);
   document.getElementById('c-var-sub').textContent    = 'ppto ' + fmt(T.varBudget);
   document.getElementById('cb-var').style.width       = pct(T.varReal, T.varBudget) + '%';
-  document.getElementById('c-sav').textContent        = fmt(T.savReal);
-  document.getElementById('c-sav-sub').textContent    = 'meta ' + fmt(T.savMeta);
-  document.getElementById('cb-sav').style.width       = pct(T.savReal, T.savMeta) + '%';
   const bEl = document.getElementById('c-balance');
   bEl.textContent  = fmt(T.balance);
   bEl.style.color  = T.balance >= 0 ? 'var(--green)' : 'var(--red)';
+
+  // ── Tarjetas anuales de ahorro ──
+  const curYear  = new Date().getFullYear();
+  const yearSavs = st.savings.filter(s => s.month && s.month.startsWith(curYear + '-'));
+
+  const paAcum   = yearSavs.filter(s => s.bolsillo === '__pagos__').reduce((a,s)=>a+s.amount,0);
+  const paTotal  = st.pagosAnuales.reduce((a,pa)=>a+pa.monto,0);
+
+  const invSaldo = st.saldosIniciales?.['Inversión'] || 0;
+  const invAcum  = yearSavs.filter(s=>s.bolsillo==='Inversión').reduce((a,s)=>a+s.amount,0) + invSaldo;
+  const invMeta  = st.savingMetas['Inversión'] || 0;
+
+  const viaSaldo = st.saldosIniciales?.['Viajes'] || 0;
+  const viaAcum  = yearSavs.filter(s=>s.bolsillo==='Viajes').reduce((a,s)=>a+s.amount,0) + viaSaldo;
+  const viaMeta  = st.savingMetas['Viajes'] || 0;
+
+  function annualCard(label, acum, meta, color, colorBg) {
+    const p = pct(acum, meta);
+    return `<div class="card">
+      <div class="card-label">${label}</div>
+      <div style="font-family:'DM Serif Display',serif;font-size:20px;color:${color};line-height:1.1;margin-bottom:2px">${fmt(acum)}</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:8px">${meta>0?'meta '+fmt(meta)+' · '+p+'%':'Sin meta definida'}</div>
+      ${meta>0?`<div class="card-bar"><div class="card-bar-fill" style="background:${color};width:${p}%"></div></div>`:''}
+    </div>`;
+  }
+
+  const anCards = document.getElementById('savings-annual-cards');
+  if (anCards) {
+    anCards.innerHTML =
+      annualCard('Obligaciones anuales', paAcum, paTotal, 'var(--amber)', 'var(--amber-bg)') +
+      annualCard('Viajes', viaAcum, viaMeta, 'var(--blue)', 'var(--blue-bg)') +
+      annualCard('Inversión', invAcum, invMeta, 'var(--green)', 'var(--green-bg)');
+  }
 
   const txns = mTxns();
   const catSpend = {};
@@ -1123,6 +1171,8 @@ function renderAhorros() {
 function renderConfig() {
   document.getElementById('meta-inv').value    = st.savingMetas['Inversión'] || '';
   document.getElementById('meta-viajes').value = st.savingMetas['Viajes'] || '';
+  document.getElementById('saldo-inv').value   = st.saldosIniciales?.['Inversión'] || '';
+  document.getElementById('saldo-viajes').value= st.saldosIniciales?.['Viajes'] || '';
 
   // Pagos anuales list
   const paList = document.getElementById('pagos-anuales-list');
@@ -1568,8 +1618,11 @@ document.getElementById('btn-add-sav').onclick = async () => {
 document.getElementById('btn-save-metas').onclick = async () => {
   st.savingMetas['Inversión'] = parseFloat(document.getElementById('meta-inv').value)    || 0;
   st.savingMetas['Viajes']    = parseFloat(document.getElementById('meta-viajes').value) || 0;
+  if (!st.saldosIniciales) st.saldosIniciales = {};
+  st.saldosIniciales['Inversión'] = parseFloat(document.getElementById('saldo-inv').value)    || 0;
+  st.saldosIniciales['Viajes']    = parseFloat(document.getElementById('saldo-viajes').value) || 0;
   await saveConfig();
-  alert('Metas guardadas ✓');
+  alert('Metas y saldos guardados ✓');
 };
 
 document.getElementById('btn-add-pa').onclick = async () => {
