@@ -504,7 +504,7 @@ input[type=number] { -moz-appearance: textfield; }
               <option value="Los dos">Los dos (proporcional al ingreso)</option>
             </select>
           </div>
-          <div><label class="lbl">Categoría tipo</label><select id="g-cat-display" disabled style="opacity:.5"></select></div>
+          <div style="grid-column:span 2"><label class="lbl">Nota (opcional)</label><input type="text" id="g-nota" placeholder="Ej: Rappi, Éxito, Mercado finca..."></div>
         </div>
         <button class="btn red" id="btn-add-gasto">+ Registrar gasto</button>
       </div>
@@ -1054,6 +1054,7 @@ function renderGastos() {
         <span style="font-weight:500">${t.cat}</span>
         <span style="color:var(--text2);font-size:12px">${t.item}</span>
         <span class="badge" style="background:${respBg};color:${respColor}">Resp: ${resp}</span>
+        ${t.nota ? `<span style="font-size:11px;color:var(--text2);font-style:italic">📝 ${t.nota}</span>` : ''}
         <span class="txn-meta">Paga: ${t.who} · ${t.date}</span>
       </div>
       <div class="txn-right">
@@ -1637,8 +1638,10 @@ document.getElementById('btn-add-gasto').onclick = async () => {
     item: document.getElementById('g-item').value,
     who: document.getElementById('g-who').value,
     responsable,
+    nota: document.getElementById('g-nota').value.trim(),
     month: mk(), date: today() });
   document.getElementById('g-amount').value = '';
+  document.getElementById('g-nota').value   = '';
 };
 
 document.getElementById('btn-add-sav-pa').onclick = async () => {
